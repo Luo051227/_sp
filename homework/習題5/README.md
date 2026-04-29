@@ -40,32 +40,23 @@
 3. **死結風險**：不當的鎖順序可能導致死結
 4. **除錯困難**：非確定性的執行順序
 
-### 1.5 POSIX執行緒（pthread）
+### 1.5 Python執行緒（threading）
 
-Linux系統使用pthread庫進行多執行緒程式設計：
+Python使用threading模組進行多執行緒程式設計：
 
-```c
-#include <pthread.h>
+```python
+import threading
 
-// 執行緒函數
-void* thread_function(void* arg) {
-    int* num = (int*)arg;
-    printf("執行緒執行，參數: %d\n", *num);
-    return NULL;
-}
+def thread_function(arg):
+    print(f"執行緒執行，參數: {arg}")
+    return None
 
-int main() {
-    pthread_t thread;
-    int arg = 42;
-    
-    // 創建執行緒
-    pthread_create(&thread, NULL, thread_function, &arg);
-    
-    // 等待執行緒結束
-    pthread_join(thread, NULL);
-    
-    return 0;
-}
+# 創建執行緒
+thread = threading.Thread(target=thread_function, args=(42,))
+thread.start()
+
+# 等待執行緒結束
+thread.join()
 ```
 
 ### 1.6 執行緒的生命週期
@@ -109,71 +100,60 @@ int main() {
 
 競爭條件事的根本原因是**操作的非原子性**。一個看似簡單的運算，如「讀取-修改-寫入」，在執行過程中可能被打斷：
 
-```c
-// 原始餘額 = 1000
-// 執行緒1: 讀取餘額(1000) → 加100 → 寫回(1100)
-// 執行緒2: 讀取餘額(1000) → 減200 → 寫回(800)
+```python
+# 原始餘額 = 1000
+# 執行緒1: 讀取餘額(1000) → 加100 → 寫回(1100)
+# 執行緒2: 讀取餘額(1000) → 減200 → 寫回(800)
 
-// 錯誤結果取決於執行順序：
-// 如果交錯執行，最終可能變成 800 或 1100
-// 但正確結果應該是 900
+# 錯誤結果取決於執行順序：
+# 如果交錯執行，最終可能變成 800 或 1100
+# 但正確結果應該是 900
 ```
 
 ### 2.3 競爭條件事的類型
 
 #### 2.3.1 讀-修改-寫競爭
 
-```c
-// 不安全的程式碼
-int counter = 0;
+```python
+# 不安全的程式碼
+counter = 0
 
-void* increment(void* arg) {
-    for (int i = 0; i < 10000; i++) {
-        counter++;  // 讀取、修改、寫回三個步驟
-    }
-    return NULL;
-}
+def increment():
+    global counter
+    for _ in range(10000):
+        counter += 1  # 讀取、修改、寫回三個步驟
 
-// 執行兩個執行緒後，counter可能小於20000
+# 執行兩個執行緒後，counter可能小於20000
 ```
 
 #### 2.3.2 檢查-然後-操作競爭
 
-```c
-// 不安全的雙重檢查鎖
-if (instance == NULL) {
-    instance = new Singleton();
-}
+```python
+# 不安全的雙重檢查鎖
+if instance is None:
+    instance = Singleton()
 
-// 兩個執行緒可能同時通過檢查，都創建實例
+# 兩個執行緒可能同時通過檢查，都創建實例
 ```
 
 ### 2.4 競爭條件事的範例
 
 #### 銀行帳戶問題
 
-```c
-typedef struct {
-    int balance;
-} Account;
-
-void withdraw(Account* acc, int amount) {
-    if (acc->balance >= amount) {
-        // 可能的問題：在檢查和扣款之間
-        // 其他執行緒可能修改餘額
-        acc->balance -= amount;
-    }
-}
+```python
+class Account:
+    def __init__(self):
+        self.balance = 0
+        self.lock = threading.Lock()
+    
+    def withdraw(self, amount):
+        if self.balance >= amount:
+            # 可能的問題：在檢查和扣款之間
+            # 其他執行緒可能修改餘額
+            self.balance -= amount
 ```
 
-### 2.5 檢測競爭條件事
-
-1. **程式碼審查**：檢查所有共享資源的存取
-2. **工具分析**：使用ThreadSanitizer、Valgrind等工具
-3. **壓力測試**：多次執行測試非確定性行為
-4. **模型檢查**：形式化驗證
-
-### 2.6 解決競爭條件事的方法
+### 2.5 解決競爭條件事的方法
 
 1. **互斥鎖**：保護臨界區
 2. **原子操作**：使用atomic變數
@@ -190,128 +170,73 @@ void withdraw(Account* acc, int amount) {
 
 ### 3.2 互斥鎖的基本操作
 
-```c
-#include <pthread.h>
+```python
+import threading
 
-pthread_mutex_t mutex;
+lock = threading.Lock()
 
-// 初始化互斥鎖
-pthread_mutex_init(&mutex, NULL);
+# 加鎖
+lock.acquire()
+# 臨界區：只能有一個執行緒進入
+lock.release()
 
-// 加鎖
-pthread_mutex_lock(&mutex);
-// 臨界區：只能有一個執行緒進入
-pthread_mutex_unlock(&mutex);
-
-// 銷毀互斥鎖
-pthread_mutex_destroy(&mutex);
+# 或者使用上下文管理器（推薦）
+with lock:
+    # 臨界區
+    pass
 ```
 
 ### 3.3 互斥鎖的類型
 
 #### 3.3.1 普通互斥鎖
 
-```c
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+```python
+lock = threading.Lock()
 
-// 基本使用
-pthread_mutex_lock(&mutex);
-// 臨界區域
-pthread_mutex_unlock(&mutex);
+with lock:
+    # 臨界區域
+    pass
 ```
 
 #### 3.3.2 遞迴互斥鎖
 
 允許同一執行緒多次鎖定，需要相同次數解鎖：
 
-```c
-pthread_mutex_t mutex;
-pthread_mutexattr_t attr;
+```python
+lock = threading.RLock()
 
-pthread_mutexattr_init(&attr);
-pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-pthread_mutex_init(&mutex, &attr);
+with lock:
+    with lock:  # 可以多次鎖定
+        pass
 ```
 
-#### 3.3.3 錯誤檢查互斥鎖
+### 3.3.3 其他同步機制
 
-幫助檢測死結和錯誤使用：
+#### 訊號量
 
-```c
-pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+```python
+semaphore = threading.Semaphore(3)  # 最多3個執行緒
+
+semaphore.acquire()
+# 使用資源
+semaphore.release()
 ```
 
-### 3.4 互斥鎖的實現原理
+#### 條件變數
 
-```
-執行緒A                    執行緒B
-   │                          │
-   ├─ lock() → 獲得鎖         │
-   │                          ├─ lock() → 阻塞等待
-   │                          │
-   │                          │
-   ├─ 解鎖 → 釋放鎖           │
-   │                          ├─ 獲得鎖 → 進入臨界區
-   │                          │
-   ├──────────────────────────┤
-```
+```python
+condition = threading.Condition()
+lock = threading.Lock()
 
-### 3.5 臨界區設計原則
+# 等待條件
+with condition:
+    while not ready:
+        condition.wait()
 
-1. **最小化臨界區**：只保護必要的共享資源
-2. **避免長時間持有鎖**：減少其他執行緒等待
-3. **不要在持鎖時呼叫阻塞函數**：避免死結
-4. **一致的鎖順序**：防止死結
-
-### 3.6 其他同步機制
-
-#### 3.6.1 讀寫鎖
-
-```c
-pthread_rwlock_t rwlock;
-
-// 讀鎖（多個執行緒可以同時讀）
-pthread_rwlock_rdlock(&rwlock);
-// 讀操作
-pthread_rwlock_unlock(&rwlock);
-
-// 寫鎖（獨占）
-pthread_rwlock_wrlock(&rwlock);
-// 寫操作
-pthread_rwlock_unlock(&rwlock);
-```
-
-#### 3.6.2 條件變數
-
-```c
-pthread_cond_t cond;
-pthread_mutex_t mutex;
-int ready = 0;
-
-// 等待條件
-pthread_mutex_lock(&mutex);
-while (!ready) {
-    pthread_cond_wait(&cond, &mutex);
-}
-pthread_mutex_unlock(&mutex);
-
-// 發送信號
-pthread_mutex_lock(&mutex);
-ready = 1;
-pthread_cond_signal(&cond);
-pthread_mutex_unlock(&mutex);
-```
-
-#### 3.6.3 訊號量
-
-```c
-sem_t sem;
-sem_init(&sem, 0, 1);  // 初始值1
-
-// P操作（遞減）
-sem_wait(&sem);
-// 臨界區
-sem_post(&sem);  // V操作（遞增）
+# 發送信號
+with condition:
+    ready = True
+    condition.notify()
 ```
 
 ---
@@ -343,163 +268,102 @@ Coffman條件是產生死結的四個必要條件：
 
 ### 4.3 死結的範例
 
-#### 4.3.1 兩個互斥鎖
+```python
+# 執行緒1
+lock1.acquire()
+lock2.acquire()
 
-```c
-// 執行緒1
-pthread_mutex_lock(&mutex1);
-pthread_mutex_lock(&mutex2);
-// 臨界區
-pthread_mutex_unlock(&mutex2);
-pthread_mutex_unlock(&mutex1);
+# 執行緒2（不同的鎖順序）
+lock2.acquire()
+lock1.acquire()
 
-// 執行緒2（不同的鎖順序）
-pthread_mutex_lock(&mutex2);
-pthread_mutex_lock(&mutex1);
-// 臨界區
-pthread_mutex_unlock(&mutex1);
-pthread_mutex_unlock(&mutex2);
-
-// 可能發生：執行緒1獲得mutex1，執行緒2獲得mutex2，然後互相等待
-```
-
-#### 4.3.2 生產者-消費者問題中的死結
-
-```c
-// 如果緩衝區滿且沒有正確的同步
-// 生產者等待消費者取出資料
-// 消費者等待生產者放入資料
+# 可能發生：執行緒1獲得lock1，執行緒2獲得lock2，然後互相等待
 ```
 
 ### 4.4 預防死結的方法
 
 #### 4.4.1 破壞占有並等待
 
-```c
-// 方法1：一次請求所有資源
-pthread_mutex_lock(&both_mutex);
-// 使用兩個資源
-pthread_mutex_unlock(&both_mutex);
-
-// 方法2：釋放已持有的資源再請求新資源
-void safe_function() {
-    pthread_mutex_lock(&mutex1);
-    pthread_mutex_unlock(&mutex1);  // 釋放
-    
-    // 重新請求
-    pthread_mutex_lock(&mutex1);
-    pthread_mutex_lock(&mutex2);
-}
+```python
+# 方法：一次請求所有資源
+with lock1:
+    with lock2:
+        # 使用兩個資源
+        pass
 ```
 
 #### 4.4.2 破壞循環等待
 
-```c
-// 方法：固定順序請求資源
-// 總是先請求mutex1，再請求mutex2
+```python
+# 方法：固定順序請求資源
+# 總是先請求lock1，再請求lock2
 
-// 執行緒1
-pthread_mutex_lock(&mutex1);
-pthread_mutex_lock(&mutex2);
+# 執行緒1
+with lock1:
+    with lock2:
 
-// 執行緒2（相同的順序）
-pthread_mutex_lock(&mutex1);
-pthread_mutex_lock(&mutex2);
+# 執行緒2（相同的順序）
+with lock1:
+    with lock2:
 ```
 
-### 4.5 避免死結的策略
+### 4.5 哲學家用餐問題的解決策略
 
-#### 4.5.1 銀行家演算法
+哲學家用餐問題是經典的死結範例，使用奇偶策略避免死結：
 
-在資源分配前檢查是否安全，雖然保守但能避免死結。
+```python
+# 奇數號哲學家：先拿左邊，再拿右邊
+# 偶數號哲學家：先拿右邊，再拿左邊
 
-#### 4.5.2 鎖超時
-
-```c
-// 使用pthread_mutex_timedlock
-struct timespec ts;
-clock_gettime(CLOCK_REALTIME, &ts);
-ts.tv_sec += 1;  // 1秒超時
-
-int result = pthread_mutex_timedlock(&mutex, &ts);
-if (result == ETIMEDOUT) {
-    // 處理超時，可能需要回退
-}
+if philosopher_id % 2 == 1:  # 奇數
+    first, second = left_fork, right_fork
+else:                        # 偶數
+    first, second = right_fork, left_fork
 ```
-
-### 4.6 檢測和恢復
-
-#### 4.6.1 死結檢測
-
-```c
-// 定期檢查執行緒等待圖
-// 如果發現環則表示死結
-```
-
-#### 4.6.2 恢復策略
-
-1. **強制終止**：殺死一個執行緒
-2. **回滾**：讓執行緒釋放所有資源
-3. **搶占**：從某個執行緒搶占資源
-
-### 4.7 死結 vs 活結
-
-| 特性 | 死結（Deadlock） | 活結（Livelock） |
-|------|------------------|------------------|
-| 執行緒狀態 | 阻塞 | 運行但無法前進 |
-| CPU使用 | 不消耗 | 消耗但無進展 |
-| 原因 | 互相等待 | 不斷重試 |
-| 檢測 | 等待圖 | 觀察執行 |
 
 ---
 
 ## 5. 範例程式說明
 
-### 5.1 銀行存款模擬
+### 5.1 銀行存款模擬（Python）
 
 **目標**：模擬同一帳戶的存提款操作，驗證執行緒安全性
 
-**關鍵概念**：
-- 使用互斥鎖保護共享的帳戶餘額
-- 執行100000次存款和100000次提款
-- 最終餘額應為初始值（因為存款提款次數相同）
-
 **同步機制**：
-- 使用pthread_mutex保護臨界區
+- 使用 `threading.Lock` 保護共享的帳戶餘額
 - 每次存款/提款前加鎖，完成後解鎖
 
-### 5.2 生產者-消費者問題
+**執行方式**：
+```bash
+python3 銀行存款模擬.py
+```
+
+### 5.2 生產者-消費者問題（Python）
 
 **目標**：模擬多個生產者將產品放入緩衝區，多個消費者從緩衝區取出產品
 
-**關鍵概念**：
-- 緩衝區大小有限
-- 生產者需要等待緩衝區有空位
-- 消費者需要等待緩衝區有產品
-
 **同步機制**：
-- 訊號量控制緩衝區空位和產品數量
-- 互斥鎖保護緩衝區的實際存取
+- 自定義 Semaphore 控制緩衝區空位和產品數量
+- 使用 queue.Queue 作為環形緩衝區
 - 防止生產者和消費者同時訪問緩衝區
 
-### 5.3 哲學家用餐問題
+**執行方式**：
+```bash
+python3 生產者消費者.py
+```
+
+### 5.3 哲學家用餐問題（Python）
 
 **目標**：模擬五位哲學家在圓桌上用餐的經典同步問題
 
-**問題描述**：
-- 五位哲學家圍坐在圓桌旁
-- 每位哲學家左右各有一支叉子
-- 只有拿到兩支叉子才能吃麵
-- 吃完後放下叉子讓其他哲學家使用
-
-**挑戰**：
-- 可能發生死結（所有哲學家同時拿起左叉）
-- 需要避免死結同時保證公平性
-
 **解決方案**：
-- 規定奇數號哲學家先拿左邊叉子，偶數號先拿右邊
-- 或使用侍者（最多四位哲學家同時就座）
+- 奇偶策略：奇數號哲學家先拿左邊，偶數號先拿右邊
 - 使用互斥鎖保護叉子狀態
+
+**執行方式**：
+```bash
+python3 哲學家用餐.py
+```
 
 ---
 
